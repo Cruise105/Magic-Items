@@ -104,7 +104,7 @@ function partyView(){
       <select class="sm" data-mv="${c.cid}" style="padding:3px"><option value="">Move to…</option>${h!=='stash'?'<option value="stash">Party Stash</option>':''}${S.pcs.filter(x=>x.id!==h).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`)}</select>
       <button class="sm" data-pq="${esc(c.itemId)}">+ Print</button><button class="sm bad" data-rm="${c.cid}">✕</button></div></div>`}).join('')||'<p class="mu">Empty</p>'}</div>`;
   };
-  return `<p class="mu">Failed attempts are tracked per character, per copy. Moving a copy clears its attunement; a character who locked out of that copy stays locked out if it ever returns.</p><div class="cols">${col('stash','Party Stash',null)}${S.pcs.map(p=>col(p.id,p.name,p)).join('')}</div>`;
+  return `<div class="row" style="margin-bottom:8px"><button class="pri" id="addpc">+ Add character</button></div><p class="mu">Failed attempts are tracked per character, per copy. Moving a copy clears its attunement; a character who locked out of that copy stays locked out if it ever returns.</p><div class="cols">${col('stash','Party Stash',null)}${S.pcs.map(p=>col(p.id,p.name,p)).join('')}</div>`;
 }
 // ---------- print ----------
 function attSheet(i){const a=i.attune||{};if(a.mode==='required')return a.by?'By '+a.by:'Yes';if(a.mode==='optional')return 'Optional';return 'No'}
@@ -156,6 +156,16 @@ function dataView(){
   <h3>Items only</h3><div class="row"><button id="expc">Export my custom + edited items</button></div>
   <h3>Reset</h3><button class="bad" id="reset">Erase all app data in this browser</button></div>
   <div class="card"><p class="mu">${SEED.items.length} items loaded from the sheets · ${S.custom.length} custom · ${Object.keys(S.edits).length} edited</p></div>`;
+}
+function pcForm(id){
+  const p=id?pc(id):{id:'pc'+uid(),name:'',limit:3};
+  const n=id?S.inv.filter(c=>c.holder===id).length:0;
+  modal(`<h2>${id?'Edit character':'Add character'}</h2><label>Name</label><input id="pn" value="${esc(p.name)}"><label>Attunement limit</label><input id="pl" type="number" min="0" value="${p.limit}">
+  <div class="row" style="margin-top:12px"><button class="pri" id="ps">Save</button><button id="px">Cancel</button>${id?'<div class="grow"></div><button class="bad" id="pr">Remove character</button>':''}</div>`,m=>{
+    $('#px',m).onclick=closeModal;
+    $('#ps',m).onclick=()=>{const nm=$('#pn',m).value.trim();if(!nm)return alert('Name is required');p.name=nm;p.limit=Math.max(0,parseInt($('#pl',m).value)||0);if(!id)S.pcs.push(p);save();closeModal();render()};
+    if(id)$('#pr',m).onclick=()=>{if(!confirm(`Remove ${p.name}?`+(n?` Their ${n} item${n>1?'s':''} will move to the Party Stash (attunement cleared).`:'')))return;S.inv.forEach(c=>{if(c.holder===id){c.holder='stash';c.attuned=false}});S.pcs=S.pcs.filter(x=>x.id!==id);save();closeModal();render()};
+  });
 }
 // ---------- edit form ----------
 function editForm(i){
@@ -281,7 +291,8 @@ function bind(){
     on('[data-pq]','click',e=>{const id=e.currentTarget.dataset.pq;if(!S.printQ.includes(id))S.printQ.push(id);save();e.currentTarget.textContent='✓ queued'});
     on('[data-open]','click',e=>{e.preventDefault();S.ui.sel=e.currentTarget.dataset.open;S.ui.tab='items';render()});
     on('[data-lim]','click',e=>{const[h,d]=e.currentTarget.dataset.lim.split(':');const p=pc(h);p.limit=Math.max(0,p.limit+ +d);save();render()});
-    on('[data-ren]','click',e=>{const p=pc(e.currentTarget.dataset.ren);const n=prompt('Character name',p.name);if(n&&n.trim()){p.name=n.trim();save();render()}});
+    on('[data-ren]','click',e=>pcForm(e.currentTarget.dataset.ren));
+    $('#addpc').onclick=()=>pcForm(null);
   }
   if(t==='print'){
     $('#pm').onclick=()=>{S.print.pt=Math.max(MINPT,S.print.pt-.5);save();$('#ptv').textContent=S.print.pt+'pt';buildPages()};
