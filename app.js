@@ -144,7 +144,8 @@ function printView(){
   <span class="mu">(minimum ${MINPT}pt)</span>
   <select id="paper" style="width:auto"><option value="letter" ${pr.paper==='letter'?'selected':''}>Letter</option><option value="a4" ${pr.paper==='a4'?'selected':''}>A4</option></select>
   <label style="margin:0"><input type="checkbox" id="sa" ${pr.showAtt?'checked':''} style="width:auto"> show attunement line</label>
-  <label style="margin:0"><input type="checkbox" id="dv" ${pr.dimVal===false?'':'checked'} style="width:auto"> faint value (like the sheet)</label>
+  <label style="margin:0"><input type="checkbox" id="dv" ${pr.dimVal===false?'':'checked'} style="width:auto"> faint value</label>
+  <select id="vc" style="width:auto"><option value="#b7b7b7" ${(pr.valColor||'#b7b7b7')==='#b7b7b7'?'selected':''}>Like the sheet</option><option value="#c4c4c4" ${pr.valColor==='#c4c4c4'?'selected':''}>Fainter</option><option value="#cfcfcf" ${pr.valColor==='#cfcfcf'?'selected':''}>Faintest</option></select>
   <div class="grow"></div><button class="pri" id="doprint">🖨 Print</button></div>
   <div id="pstat" class="mu" style="margin-top:6px"></div>${skipped?`<div class="warn">${skipped} GM-only twin entr${skipped>1?'ies are':'y is'} in the queue and will NOT print (they reveal curses/secrets).</div>`:''}
   <p class="mu" style="margin:4px 0 0;font-size:13px">The preview below is exactly what prints: same size, same page breaks. Cards never split across pages. Player-safe fields only — no Verdict text.</p></div>
@@ -298,6 +299,7 @@ function bind(){
     $('#pm').onclick=()=>{S.print.pt=Math.max(MINPT,S.print.pt-.5);save();$('#ptv').textContent=S.print.pt+'pt';buildPages()};
     $('#pp').onclick=()=>{S.print.pt=Math.min(MAXPT,S.print.pt+.5);save();$('#ptv').textContent=S.print.pt+'pt';buildPages()};
     $('#paper').onchange=e=>{S.print.paper=e.target.value;save();buildPages()};
+    $('#vc').onchange=e=>{S.print.valColor=e.target.value;save();buildPages()};
     $('#dv').onchange=e=>{S.print.dimVal=e.target.checked;save();buildPages()};
     $('#sa').onchange=e=>{S.print.showAtt=e.target.checked;save();buildPages()};
     $('#doprint').onclick=()=>window.print();
