@@ -110,7 +110,7 @@ function partyView(){
 function attSheet(i){const a=i.attune||{};if(a.mode==='required')return a.by?'By '+a.by:'Yes';if(a.mode==='optional')return 'Optional';return 'No'}
 function cardHTML(i){
   const rar=i.rarity?i.rarity+(i.tier?' (Tier '+i.tier+')':''):'';
-  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="r2"><span>${esc(i.type)}</span><span>${esc(rar)}</span></div>${S.print.showAtt?`<div class="r1">Attunement: ${esc(attSheet(i))}</div>`:''}<div class="r2"><span>Value: <span class="hv">${esc(i.value||'?')}</span></span><span>Weight: ${esc(i.weight||'?')}</span></div><div class="d">${esc(i.desc)}</div></div>`;
+  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="r2"><span>${esc(i.type)}</span><span>${esc(rar)}</span></div>${S.print.showAtt?`<div class="r1">Attunement: ${esc(attSheet(i))}</div>`:''}<div class="r2"><span>Value: <span${S.print.dimVal===false?'':` style="color:${S.print.valColor||'#b7b7b7'}"`}>${esc(i.value||'?')}</span></span><span>Weight: ${esc(i.weight||'?')}</span></div><div class="d">${esc(i.desc)}</div></div>`;
 }
 let lastPages=0,lastOver=0;
 function buildPages(){
