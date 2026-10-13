@@ -8,7 +8,7 @@ const MINPT=10, MAXPT=16;
 let S;
 function defaults(){return{pcs:[1,2,3,4,5,6].map(n=>({id:'pc'+n,name:'Player '+n,limit:3})),inv:[],custom:[],edits:{},printQ:[],print:{pt:11,paper:'letter',showAtt:true},ui:{q:'',src:'',rar:'',att:'',sel:null,tab:'items',showGM:true}}}
 function load(){try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);return Object.assign(defaults(),o,{ui:Object.assign(defaults().ui,o.ui||{})})}}catch(e){}return defaults()}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Could not save to browser storage: '+e)}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Could not save to browser storage: '+e)}if(typeof syncNote==='function')syncNote()}
 S=load();
 // ---------- items ----------
 let ITEMS=[];const byId={};
@@ -149,9 +149,9 @@ function printView(){
   <div id="printout"><div class="pagewrap" id="pages"></div></div>`;
 }
 function dataView(){
-  return `<div class="card"><h2>Backup</h2><p class="mu">This app is the master copy. Everything (inventory, fail counts, limits, edits, new items, print settings) lives in this browser, so export a backup regularly.</p>
+  return syncCard()+`<div class="card"><h2>Backup</h2><p class="mu">This app is the master copy. Everything (inventory, fail counts, limits, edits, new items, print settings) lives in this browser, so export a backup regularly.</p>
   <div class="row"><button class="pri" id="exp">Export backup (.json)</button><label class="sm" style="margin:0">Import backup: <input type="file" id="imp" accept=".json" style="width:auto"></label></div>
-  <h3>New items only</h3><div class="row"><button id="expc">Export my custom + edited items</button></div>
+  <h3>Items only</h3><div class="row"><button id="expc">Export my custom + edited items</button></div>
   <h3>Reset</h3><button class="bad" id="reset">Erase all app data in this browser</button></div>
   <div class="card"><p class="mu">${SEED.items.length} items loaded from the sheets · ${S.custom.length} custom · ${Object.keys(S.edits).length} edited</p></div>`;
 }
@@ -197,6 +197,58 @@ function render(){
   if(t==='print')requestAnimationFrame(buildPages);
   bind();
 }
+// ---------- Google Drive sync (hidden app-data file, same idea as the other apps) ----------
+const SK='omnithel-sync-v1';let Y={};try{Y=JSON.parse(localStorage.getItem(SK)||'{}')}catch(e){}
+const saveY=()=>{try{localStorage.setItem(SK,JSON.stringify(Y))}catch(e){}};
+const FILE='omnithel-items.json',SCOPE='https://www.googleapis.com/auth/drive.appdata';
+const hsh=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return String(h)};
+const payload=()=>{const{ui,...rest}=S;return JSON.stringify(rest)};
+let tok=null,tokExp=0,syncMsg='',pushT=null,busy=false;
+const setMsg=m=>{syncMsg=m;const e=$('#syncpill');if(e)e.textContent=m;const d=$('#syncdet');if(d)d.textContent=m};
+const changed=()=>hsh(payload())!==Y.lastHash;
+function syncNote(){if(!Y.connected)return;if(changed()){setMsg('● unsynced changes');clearTimeout(pushT);pushT=setTimeout(()=>{if(tok&&Date.now()<tokExp-60000)doSync(true)},4000)}}
+function loadGIS(){return new Promise((res,rej)=>{if(window.google&&google.accounts&&google.accounts.oauth2)return res();const sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.onload=res;sc.onerror=()=>rej('Could not reach Google (offline?)');document.head.appendChild(sc)})}
+async function getToken(interactive){
+  if(tok&&Date.now()<tokExp-60000)return tok;
+  await loadGIS();
+  return new Promise((res,rej)=>{
+    const c=google.accounts.oauth2.initTokenClient({client_id:Y.clientId,scope:SCOPE,callback:r=>{if(r.error)return rej(r.error);tok=r.access_token;tokExp=Date.now()+r.expires_in*1000;res(tok)},error_callback:e=>rej(e.type||'sign-in cancelled')});
+    c.requestAccessToken({prompt:interactive?(Y.connected?'':'consent'):''});
+  });
+}
+async function gapi(url,opt={}){const r=await fetch(url,Object.assign({},opt,{headers:Object.assign({Authorization:'Bearer '+tok},opt.headers||{})}));if(!r.ok)throw new Error('Drive '+r.status+': '+(await r.text()).slice(0,120));return r}
+async function findRemote(){const r=await gapi('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+encodeURIComponent("name='"+FILE+"'")+'&fields=files(id)');const j=await r.json();return j.files[0]?.id||null}
+async function pull(id){const r=await gapi('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media');return r.json()}
+async function push(id,stamp){
+  const body=JSON.stringify({app:'omnithel-items',stamp,state:JSON.parse(payload())});
+  if(id){await gapi('https://www.googleapis.com/upload/drive/v3/files/'+id+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'application/json'},body});return id}
+  const b='xx'+uid();
+  const r=await gapi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body:`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({name:FILE,parents:['appDataFolder']})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`});
+  return (await r.json()).id;
+}
+function applyRemote(rem){const ui=S.ui;S=Object.assign(defaults(),rem.state,{ui});buildItems();save();}
+async function doSync(silent){
+  if(busy||!Y.clientId)return;busy=true;
+  try{
+    setMsg('syncing…');await getToken(!silent);
+    const id=await findRemote();let lc=changed();
+    const pristine=!S.inv.length&&!S.custom.length&&!Object.keys(S.edits).length&&!S.printQ.length&&S.pcs.every(p=>/^Player \d$/.test(p.name)&&p.limit===3);
+    if(!Y.remoteStamp&&pristine)lc=false;
+    if(!id){const st=Date.now(),fid=await push(null,st);Y.fileId=fid;Y.remoteStamp=st;Y.lastHash=hsh(payload());saveY();setMsg('✓ uploaded to Drive');render();return}
+    const rem=await pull(id),rc=rem.stamp!==Y.remoteStamp;
+    const done=(m,stamp)=>{Y.remoteStamp=stamp;Y.lastHash=hsh(payload());saveY();setMsg('✓ '+m+' '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}));if(!silent||m.startsWith('pulled'))render()};
+    const doPush=async()=>{const st=Date.now();await push(id,st);done('synced',st)};
+    const doPull=()=>{applyRemote(rem);done('pulled newer data',rem.stamp)};
+    if(!lc&&!rc){setMsg('✓ up to date');return}
+    if(rc&&!lc)doPull();
+    else if(lc&&!rc)await doPush();
+    else await new Promise(res=>modal(`<h2>Both changed</h2><div class="warn">This device and Google Drive both have changes since the last sync. One side will be replaced.</div><div class="row"><button class="pri" id="a">Use this device (overwrite Drive)</button><button id="b">Use Drive (overwrite this device)</button><button id="c">Decide later</button></div>`,m=>{$('#a',m).onclick=async()=>{closeModal();await doPush();res()};$('#b',m).onclick=()=>{closeModal();doPull();res()};$('#c',m).onclick=()=>{closeModal();setMsg('● conflict — tap Sync');res()}}));
+  }catch(e){setMsg(silent?'● unsynced — tap Sync':'⚠ '+(e.message||e));}
+  finally{busy=false}
+}
+function syncCard(){return `<div class="card"><h2>Google Drive sync</h2><p class="mu">Keeps one copy of your data in a hidden app folder in your Google Drive so the tablet and PC stay matched (inventory, fail counts, limits, edits, new items). Each device keeps its own filters and selection. If both sides changed, it asks which one wins.</p>
+ <label>Google OAuth client ID (the same one your other apps use works if it allows this site's address)</label><input id="cid" value="${esc(Y.clientId||'')}" placeholder="1234-abc.apps.googleusercontent.com">
+ <div class="row" style="margin-top:8px"><button class="pri" id="conn">${Y.connected?'Sync now':'Connect Google Drive'}</button>${Y.connected?'<button id="disc">Disconnect</button>':''}<span id="syncdet" class="mu">${esc(syncMsg)}</span></div></div>`}
 const dl=(name,obj)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));a.download=name;a.click()};
 function bind(){
   const A=$('#app');
@@ -238,6 +290,8 @@ function bind(){
     $('#qh').onchange=e=>{const h=e.target.value;if(!h)return;S.inv.filter(c=>c.holder===h).forEach(c=>{if(!S.printQ.includes(c.itemId))S.printQ.push(c.itemId)});save();render()};
   }
   if(t==='data'){
+    $('#conn').onclick=()=>{const v=$('#cid').value.trim();if(!v)return alert('Paste your Google OAuth client ID first.');Y.clientId=v;Y.connected=true;saveY();doSync(false)};
+    const dc=$('#disc');if(dc)dc.onclick=()=>{Y.connected=false;tok=null;saveY();setMsg('');render()};
     $('#exp').onclick=()=>dl('omnithel-items-backup-'+new Date().toISOString().slice(0,10)+'.json',{app:'omnithel-items',version:1,state:S});
     $('#expc').onclick=()=>dl('omnithel-custom-items.json',{custom:S.custom,edits:S.edits});
     $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(tx=>{try{const o=JSON.parse(tx);if(!o.state||o.app!=='omnithel-items')throw 'Not a backup from this app';if(!confirm('Replace everything in this browser with the backup?'))return;S=Object.assign(defaults(),o.state);save();buildItems();render()}catch(err){alert('Import failed: '+err)}})};
@@ -249,3 +303,4 @@ window.addEventListener('resize',()=>{if(S.ui.tab==='print')buildPages()});
 window.addEventListener('beforeprint',()=>{if(S.ui.tab!=='print'){}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
+if(Y.connected){setMsg(changed()?'● unsynced changes':'');doSync(true)}
