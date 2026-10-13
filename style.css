@@ -41,7 +41,8 @@ main{padding:12px}
 .pcard .n{background:#ffc;font-weight:700;font-size:1.4em;text-align:center;padding:.03in .06in;border-bottom:1px solid #000;line-height:1.15}
 .pcard .r1{background:#d9d9d9;font-style:italic;padding:.02in .08in;border-bottom:1px solid #000}
 .pcard .r2{display:grid;grid-template-columns:1fr 1fr;background:#d9d9d9;font-style:italic;border-bottom:1px solid #000}
-.pcard .r2 span{padding:.02in .08in}.pcard .r2 span:first-child{border-right:1px solid #000;text-align:center}.pcard .r2 span:last-child{text-align:center}
+.pcard .r2>span{padding:.02in .08in}.pcard .r2>span:first-child{border-right:1px solid #000;text-align:center}.pcard .r2>span:last-child{text-align:center}
+.pcard .vd{color:#b7b7b7}
 .pcard .d{white-space:pre-wrap;text-align:center;padding:.05in .1in}
 .pcard.over{outline:3px solid red}
 .pg-n{position:absolute;bottom:.12in;right:.4in;font:9px sans-serif;color:#888}

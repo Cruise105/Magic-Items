@@ -110,7 +110,7 @@ function partyView(){
 function attSheet(i){const a=i.attune||{};if(a.mode==='required')return a.by?'By '+a.by:'Yes';if(a.mode==='optional')return 'Optional';return 'No'}
 function cardHTML(i){
   const rar=i.rarity?i.rarity+(i.tier?' (Tier '+i.tier+')':''):'';
-  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="r2"><span>${esc(i.type)}</span><span>${esc(rar)}</span></div>${S.print.showAtt?`<div class="r1">Attunement: ${esc(attSheet(i))}</div>`:''}<div class="r2"><span>Value: ${esc(i.value||'?')}</span><span>Weight: ${esc(i.weight||'?')}</span></div><div class="d">${esc(i.desc)}</div></div>`;
+  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="r2"><span>${esc(i.type)}</span><span>${esc(rar)}</span></div>${S.print.showAtt?`<div class="r1">Attunement: ${esc(attSheet(i))}</div>`:''}<div class="r2"><span>Value: <span class="hv">${esc(i.value||'?')}</span></span><span>Weight: ${esc(i.weight||'?')}</span></div><div class="d">${esc(i.desc)}</div></div>`;
 }
 let lastPages=0,lastOver=0;
 function buildPages(){
@@ -144,6 +144,7 @@ function printView(){
   <span class="mu">(minimum ${MINPT}pt)</span>
   <select id="paper" style="width:auto"><option value="letter" ${pr.paper==='letter'?'selected':''}>Letter</option><option value="a4" ${pr.paper==='a4'?'selected':''}>A4</option></select>
   <label style="margin:0"><input type="checkbox" id="sa" ${pr.showAtt?'checked':''} style="width:auto"> show attunement line</label>
+  <label style="margin:0"><input type="checkbox" id="dv" ${pr.dimVal===false?'':'checked'} style="width:auto"> faint value (like the sheet)</label>
   <div class="grow"></div><button class="pri" id="doprint">🖨 Print</button></div>
   <div id="pstat" class="mu" style="margin-top:6px"></div>${skipped?`<div class="warn">${skipped} GM-only twin entr${skipped>1?'ies are':'y is'} in the queue and will NOT print (they reveal curses/secrets).</div>`:''}
   <p class="mu" style="margin:4px 0 0;font-size:13px">The preview below is exactly what prints: same size, same page breaks. Cards never split across pages. Player-safe fields only — no Verdict text.</p></div>
@@ -286,6 +287,7 @@ function bind(){
     $('#pm').onclick=()=>{S.print.pt=Math.max(MINPT,S.print.pt-.5);save();$('#ptv').textContent=S.print.pt+'pt';buildPages()};
     $('#pp').onclick=()=>{S.print.pt=Math.min(MAXPT,S.print.pt+.5);save();$('#ptv').textContent=S.print.pt+'pt';buildPages()};
     $('#paper').onchange=e=>{S.print.paper=e.target.value;save();buildPages()};
+    $('#dv').onchange=e=>{S.print.dimVal=e.target.checked;save();buildPages()};
     $('#sa').onchange=e=>{S.print.showAtt=e.target.checked;save();buildPages()};
     $('#doprint').onclick=()=>window.print();
     $('#clrq').onclick=()=>{S.printQ=[];save();render()};
