@@ -36,15 +36,18 @@ main{padding:12px}
 .page{background:#fff;color:#000;width:8.5in;height:11in;margin:0 auto 14px;padding:.4in;position:relative;overflow:hidden;transform-origin:top left}
 .page.a4{width:210mm;height:297mm}
 .pagebox{margin:0 auto 14px}
-.prow{display:grid;grid-template-columns:1fr 1fr;gap:.12in;margin-bottom:.12in}
-.pcard{border:1.2px solid #000;border-radius:5px;padding:.07in .1in;font-family:Georgia,serif;line-height:1.25;overflow:hidden;background:#fff;min-width:0}
-.pcard .n{font-weight:700;font-size:1.15em;border-bottom:1px solid #000;margin-bottom:2px}
-.pcard .m{font-style:italic}.pcard .d{white-space:pre-wrap;margin-top:3px}
+.prow{display:grid;grid-template-columns:1fr 1fr;gap:.14in;margin-bottom:.14in}
+.pcard{border:2px solid #000;font-family:Georgia,'Times New Roman',serif;line-height:1.25;overflow:hidden;background:#fff;min-width:0;color:#000}
+.pcard .n{background:#ffc;font-weight:700;font-size:1.4em;text-align:center;padding:.03in .06in;border-bottom:1px solid #000;line-height:1.15}
+.pcard .r1{background:#d9d9d9;font-style:italic;padding:.02in .08in;border-bottom:1px solid #000}
+.pcard .r2{display:grid;grid-template-columns:1fr 1fr;background:#d9d9d9;font-style:italic;border-bottom:1px solid #000}
+.pcard .r2 span{padding:.02in .08in}.pcard .r2 span:first-child{border-right:1px solid #000;text-align:center}.pcard .r2 span:last-child{text-align:center}
+.pcard .d{white-space:pre-wrap;text-align:center;padding:.05in .1in}
 .pcard.over{outline:3px solid red}
 .pg-n{position:absolute;bottom:.12in;right:.4in;font:9px sans-serif;color:#888}
 @media print{
  @page{margin:0}
- body{background:#fff}
+ body{background:#fff}.page,.pcard,.pcard *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
  header,#app>*:not(#printout),.noprint{display:none!important}
  #app{padding:0}#printout{display:block!important}
  .pagewrap{background:none;padding:0;overflow:visible}

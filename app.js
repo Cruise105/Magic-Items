@@ -107,9 +107,10 @@ function partyView(){
   return `<p class="mu">Failed attempts are tracked per character, per copy. Moving a copy clears its attunement; a character who locked out of that copy stays locked out if it ever returns.</p><div class="cols">${col('stash','Party Stash',null)}${S.pcs.map(p=>col(p.id,p.name,p)).join('')}</div>`;
 }
 // ---------- print ----------
+function attSheet(i){const a=i.attune||{};if(a.mode==='required')return a.by?'By '+a.by:'Yes';if(a.mode==='optional')return 'Optional';return 'No'}
 function cardHTML(i){
-  const a=S.print.showAtt?attLine(i):'';
-  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="m">${esc(rarLine(i))}${a?' · '+esc(a):''}</div>${i.value||i.weight?`<div>${[i.value&&'Value: '+esc(i.value),i.weight&&'Weight: '+esc(i.weight)].filter(Boolean).join(' · ')}</div>`:''}<div class="d">${esc(i.desc)}</div></div>`;
+  const rar=i.rarity?i.rarity+(i.tier?' (Tier '+i.tier+')':''):'';
+  return `<div class="pcard"><div class="n">${esc(i.name)}</div><div class="r2"><span>${esc(i.type)}</span><span>${esc(rar)}</span></div>${S.print.showAtt?`<div class="r1">Attunement: ${esc(attSheet(i))}</div>`:''}<div class="r2"><span>Value: ${esc(i.value||'?')}</span><span>Weight: ${esc(i.weight||'?')}</span></div><div class="d">${esc(i.desc)}</div></div>`;
 }
 let lastPages=0,lastOver=0;
 function buildPages(){
@@ -123,7 +124,7 @@ function buildPages(){
   document.body.appendChild(sb);
   const cards=[...sb.querySelectorAll('.pcard')];
   // rows: pair cards; row height = max of two
-  const rows=[];for(let k=0;k<cards.length;k+=2){rows.push({a:ids[k],b:ids[k+1],h:Math.max(cards[k].offsetHeight,cards[k+1]?cards[k+1].offsetHeight:0)+.12*96})}
+  const rows=[];for(let k=0;k<cards.length;k+=2){rows.push({a:ids[k],b:ids[k+1],h:Math.max(cards[k].offsetHeight,cards[k+1]?cards[k+1].offsetHeight:0)+.14*96})}
   document.body.removeChild(sb);
   const pages=[];let cur=[],used=0,over=0;
   rows.forEach(r=>{if(used+r.h>avail&&cur.length){pages.push(cur);cur=[];used=0}if(r.h>avail)over++;cur.push(r);used+=r.h});
