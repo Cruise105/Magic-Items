@@ -201,6 +201,8 @@ function render(){
 // ---------- Google Drive sync (hidden app-data file, same idea as the other apps) ----------
 const SK='omnithel-sync-v1';let Y={};try{Y=JSON.parse(localStorage.getItem(SK)||'{}')}catch(e){}
 const saveY=()=>{try{localStorage.setItem(SK,JSON.stringify(Y))}catch(e){}};
+const DEFAULT_CID='150155066546-k6e9l4c0fbmel2tdfkv4c4gs41bqd847.apps.googleusercontent.com';
+if(!Y.clientId)Y.clientId=DEFAULT_CID;
 const FILE='omnithel-items.json',SCOPE='https://www.googleapis.com/auth/drive.appdata';
 const hsh=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return String(h)};
 const payload=()=>{const{ui,...rest}=S;return JSON.stringify(rest)};
@@ -248,7 +250,7 @@ async function doSync(silent){
   finally{busy=false}
 }
 function syncCard(){return `<div class="card"><h2>Google Drive sync</h2><p class="mu">Keeps one copy of your data in a hidden app folder in your Google Drive so the tablet and PC stay matched (inventory, fail counts, limits, edits, new items). Each device keeps its own filters and selection. If both sides changed, it asks which one wins.</p>
- <label>Google OAuth client ID (the same one your other apps use works if it allows this site's address)</label><input id="cid" value="${esc(Y.clientId||'')}" placeholder="1234-abc.apps.googleusercontent.com">
+ <details class="mu"><summary>Advanced</summary><label>Google OAuth client ID (already set to the one your Bestiary uses)</label><input id="cid" value="${esc(Y.clientId||'')}"></details>
  <div class="row" style="margin-top:8px"><button class="pri" id="conn">${Y.connected?'Sync now':'Connect Google Drive'}</button>${Y.connected?'<button id="disc">Disconnect</button>':''}<span id="syncdet" class="mu">${esc(syncMsg)}</span></div></div>`}
 const dl=(name,obj)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));a.download=name;a.click()};
 function bind(){
@@ -291,7 +293,7 @@ function bind(){
     $('#qh').onchange=e=>{const h=e.target.value;if(!h)return;S.inv.filter(c=>c.holder===h).forEach(c=>{if(!S.printQ.includes(c.itemId))S.printQ.push(c.itemId)});save();render()};
   }
   if(t==='data'){
-    $('#conn').onclick=()=>{const v=$('#cid').value.trim();if(!v)return alert('Paste your Google OAuth client ID first.');Y.clientId=v;Y.connected=true;saveY();doSync(false)};
+    $('#conn').onclick=()=>{Y.clientId=$('#cid').value.trim()||DEFAULT_CID;Y.connected=true;saveY();doSync(false)};
     const dc=$('#disc');if(dc)dc.onclick=()=>{Y.connected=false;tok=null;saveY();setMsg('');render()};
     $('#exp').onclick=()=>dl('omnithel-items-backup-'+new Date().toISOString().slice(0,10)+'.json',{app:'omnithel-items',version:1,state:S});
     $('#expc').onclick=()=>dl('omnithel-custom-items.json',{custom:S.custom,edits:S.edits});
