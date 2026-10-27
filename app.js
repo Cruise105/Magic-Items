@@ -343,6 +343,8 @@ async function getToken(interactive){
   // another app on the site already signed in with what this app needs: use that instead of asking again
   const sh=core&&Y.clientId===core.CLIENT_ID?core.signedIn(SCOPE,{app:'magic-items'}):null;
   if(sh&&Date.now()<sh.exp-60000){tok=sh.value;tokExp=sh.exp;return tok}
+  // stay signed in through the suite's key keeper when it's set up (falls back to the one-hour sign-in)
+  if(interactive&&core&&core.keeperReady&&core.keeperReady()&&Y.clientId===core.CLIENT_ID){try{const t=await core.signInLong(SCOPE,{app:'magic-items'});tok=t.value;tokExp=t.exp;return tok}catch(e){if(/closed before/.test(e.message))throw e;console.warn('key keeper',e)}}
   await loadGIS();
   return new Promise((res,rej)=>{
     const c=google.accounts.oauth2.initTokenClient({client_id:Y.clientId,scope:SCOPE,callback:r=>{if(r.error)return rej(r.error);tok=r.access_token;tokExp=Date.now()+r.expires_in*1000;if(core&&Y.clientId===core.CLIENT_ID)core.share(r,{app:'magic-items'});res(tok)},error_callback:e=>rej(e.type||'sign-in cancelled')});
