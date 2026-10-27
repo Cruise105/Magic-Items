@@ -44,7 +44,29 @@ const attunedCount=h=>S.inv.filter(c=>c.holder===h&&c.attuned).length;
 const uid=()=>Math.random().toString(36).slice(2,9);
 function modal(html,onmount){const m=$('#modal');m.innerHTML='<div class="box">'+html+'</div>';m.hidden=false;m.onclick=e=>{if(e.target===m)closeModal()};onmount&&onmount(m)}
 function closeModal(){$('#modal').hidden=true;$('#modal').innerHTML=''}
-function addCopy(itemId,holder){S.inv.push({cid:uid(),itemId,holder,attuned:false,fails:{}});save()}
+function addCopy(itemId,holder,choice){const c={cid:uid(),itemId,holder,attuned:false,fails:{}};if(choice)c.choice=choice;S.inv.push(c);save()}
+// ---------- items that leave something open (which weapon, which armor, which damage type): asked when handed out ----------
+var VIEWS=null;import('/core/views.js').then(m=>{VIEWS=m}).catch(()=>{});
+const copyName=c=>{const i=byId[c.itemId]||{name:'(missing)'};return VIEWS&&c.choice?VIEWS.choiceName(i.name,c.choice):i.name};
+function chooseFor(i,cur,done){
+  const ch=VIEWS?VIEWS.itemChoices(i):null;
+  if(!ch||!(ch.options.length>1||ch.dmg))return done(null);
+  const c=Object.assign({},cur||{});
+  modal(`<h2>${esc(i.name)}</h2><p class="mu">This item leaves ${ch.options.length>1&&ch.dmg?'two things':'something'} for you to choose. The character sheet uses what you pick.</p>
+  ${ch.options.length>1?`<label>${ch.kind==='armor'?'Which armor':'Which weapon'}</label><select id="chb"><option value="">Choose…</option>${ch.options.map(n=>`<option ${c.base===n?'selected':''}>${esc(n)}</option>`).join('')}</select>`:''}
+  ${ch.dmg?`<label>Resistance to</label><select id="chd"><option value="">Choose…</option>${VIEWS.DAMAGE_TYPES.slice(0,10).map(n=>`<option value="${n}" ${c.dmg===n?'selected':''}>${n[0].toUpperCase()+n.slice(1)}</option>`).join('')}</select>
+  <div class="row" style="margin-top:6px"><button class="sm" id="chr">Roll for it (d10)</button></div>`:''}
+  <div class="row" style="margin-top:12px"><button class="pri" id="chok">Save</button><button id="chx">Cancel</button></div>`,m=>{
+    const r=$('#chr',m);if(r)r.onclick=()=>{$('#chd',m).value=VIEWS.DAMAGE_TYPES[Math.floor(Math.random()*10)]};
+    $('#chx',m).onclick=closeModal;
+    $('#chok',m).onclick=()=>{
+      const b=$('#chb',m),d=$('#chd',m);
+      if(b&&!b.value)return alert('Pick the '+(ch.kind==='armor'?'armor':'weapon')+'.');
+      if(d&&!d.value)return alert('Pick the damage type.');
+      const out={};if(b){out.base=b.value;out.kind=ch.kind}if(d)out.dmg=d.value;
+      closeModal();done(out)};
+  });
+}
 function holderOpts(sel){return '<option value="stash">Party Stash</option>'+S.pcs.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.name)}</option>`).join('')}
 function verdictHTML(i,onlyAtt){
   const v=i.verdict;if(!v)return '<p class="mu">No Verdict text written for this item yet. Use Edit to add it.</p>';
@@ -109,7 +131,7 @@ function detail(i){
   <p class="pre">${esc(i.desc)||'<span class="mu">(no description)</span>'}</p>
   ${needsAtt(i)||i.verdict?`<h3>The Item's Verdict</h3>${verdictHTML(i)}`:''}
   ${fxSection(i)}
-  <h3>Inventory</h3>${copies.length?copies.map(c=>`<div class="copy">${esc(holderName(c.holder))}${c.attuned?' · <span class="att">attuned</span>':''}</div>`).join(''):'<p class="mu">Not in the inventory.</p>'}
+  <h3>Inventory</h3>${copies.length?copies.map(c=>`<div class="copy">${esc(holderName(c.holder))}${c.choice?` · ${esc(copyName(c))}`:''}${c.attuned?' · <span class="att">attuned</span>':''}</div>`).join(''):'<p class="mu">Not in the inventory.</p>'}
   <div class="row"><select id="addto">${holderOpts('stash')}</select><button class="pri" id="addc">Add a copy</button><button id="edit">Edit</button><button id="toq">${S.printQ.includes(i.id)?'✓ In print queue':'+ Print queue'}</button>${i.id.startsWith('custom:')?'<button class="bad" id="del">Delete</button>':S.edits[i.id]?'<button id="revert">Revert to sheet</button>':''}</div></div>`;
 }
 // ---------- effects: what an item does to its holder's numbers on their character sheet ----------
@@ -158,7 +180,8 @@ function partyView(){
     return `<div class="card"><div class="row"><h2 class="grow" style="font-size:19px">${esc(name)}</h2>${p?`<button class="sm" data-ren="${h}">Edit</button>`:''}</div>
     ${p?`<div class="row"><span class="${n>p.limit?'locked':n===p.limit?'att':'mu'}">${n} of ${p.limit} attuned</span><button class="sm" data-lim="${h}:-1">−</button><button class="sm" data-lim="${h}:1">+</button></div>`:''}
     ${cs.map(c=>{const i=byId[c.itemId]||{name:'(missing)'};const f=p?(c.fails[h]||0):0;const locked=f>=3;
-      return `<div class="copy"><b><a href="#" data-open="${esc(c.itemId)}" style="color:inherit">${esc(i.name)}</a></b> <span class="mu">${esc(i.rarity||'')}</span><br>
+      const open=VIEWS&&VIEWS.needsChoice(i);
+      return `<div class="copy"><b><a href="#" data-open="${esc(c.itemId)}" style="color:inherit">${esc(copyName(c))}</a></b> <span class="mu">${esc(i.rarity||'')}</span>${open?` <button class="sm" data-chg="${c.cid}">${c.choice?'Change':'Choose'} ${VIEWS.itemChoices(i).dmg&&!VIEWS.itemChoices(i).options.length?'type':'details'}</button>`:''}<br>
       ${p&&needsAtt(i)?(c.attuned?'<span class="att">Attuned</span>':locked?'<span class="locked">Locked out</span>':'<span class="mu">Not attuned</span>')+` <span title="failed attempts">${[0,1,2].map(k=>`<span class="pip ${k<f?'f':''}"></span>`).join('')}</span>`:''}
       <div class="row" style="margin-top:4px">${p&&needsAtt(i)&&!c.attuned&&!locked?`<button class="sm pri" data-att="${c.cid}">Attune…</button>`:''}${c.attuned?`<button class="sm" data-un="${c.cid}">Un-attune</button>`:''}
       <select class="sm" data-mv="${c.cid}" style="padding:3px"><option value="">Move to…</option>${h!=='stash'?'<option value="stash">Party Stash</option>':''}${S.pcs.filter(x=>x.id!==h).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`)}</select>
@@ -526,7 +549,7 @@ function bind(){
     on('.li[data-id]','click',e=>{S.ui.sel=e.currentTarget.dataset.id;save();render()});
     const sel=S.ui.sel&&byId[S.ui.sel];
     if(sel){
-      $('#addc').onclick=()=>{addCopy(sel.id,$('#addto').value);render()};
+      $('#addc').onclick=()=>{const h=$('#addto').value;chooseFor(sel,null,ch=>{addCopy(sel.id,h,ch);render()})};
       $('#edit').onclick=()=>editForm(sel);
       const fe=$('#fxedit');if(fe)fe.onclick=()=>fxEditor(sel);
       const fr=$('#fxreset');if(fr)fr.onclick=()=>setItemFx(sel,null);
@@ -542,6 +565,7 @@ function bind(){
     on('[data-un]','click',e=>{S.inv.find(c=>c.cid===e.currentTarget.dataset.un).attuned=false;save();render()});
     on('[data-mv]','change',e=>{const c=S.inv.find(c=>c.cid===e.currentTarget.dataset.mv),to=e.target.value;if(!to)return;c.holder=to;c.attuned=false;save();render()});
     on('[data-rm]','click',e=>{if(confirm('Remove this copy (its fail counts are lost)?')){S.inv=S.inv.filter(c=>c.cid!==e.currentTarget.dataset.rm);save();render()}});
+    on('[data-chg]','click',e=>{const c=S.inv.find(x=>x.cid===e.currentTarget.dataset.chg);if(!c)return;chooseFor(byId[c.itemId],c.choice,ch=>{if(ch){c.choice=ch;save();render()}})});
     on('[data-pq]','click',e=>{const id=e.currentTarget.dataset.pq;if(!S.printQ.includes(id))S.printQ.push(id);save();e.currentTarget.textContent='✓ queued'});
     on('[data-open]','click',e=>{e.preventDefault();S.ui.sel=e.currentTarget.dataset.open;S.ui.tab='items';render()});
     on('[data-lim]','click',e=>{const[h,d]=e.currentTarget.dataset.lim.split(':');const p=pc(h);p.limit=Math.max(0,p.limit+ +d);save();render()});
