@@ -6,8 +6,8 @@ const RAR=['Common','Uncommon','Rare','Very Rare','Legendary','Artifact','Varies
 const MINPT=10, MAXPT=16;
 // ---------- state ----------
 let S;
-function defaults(){return{pcs:[1,2,3,4,5,6].map(n=>({id:'pc'+n,name:'Player '+n,limit:3})),inv:[],custom:[],edits:{},printQ:[],print:{pt:11,paper:'letter',showAtt:true},ui:{q:'',src:'',rar:'',att:'',sel:null,tab:'items',showGM:true}}}
-function load(){try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);return Object.assign(defaults(),o,{ui:Object.assign(defaults().ui,o.ui||{})})}}catch(e){}return defaults()}
+function defaults(){return{pcs:[1,2,3,4,5,6].map(n=>({id:'pc'+n,name:'Player '+n,limit:3})),inv:[],custom:[],edits:{},hidden:{},printQ:[],print:{pt:11,paper:'letter',showAtt:true},ui:{q:'',src:'',rar:'',att:'',vis:'',sel:null,tab:'items',showGM:true}}}
+function load(){try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);return Object.assign(defaults(),o,{hidden:o.hidden||{},ui:Object.assign(defaults().ui,o.ui||{})})}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Could not save to browser storage: '+e)}if(typeof syncNote==='function')syncNote();if(typeof publishSoon==='function')publishSoon()}
 S=load();
 // ---------- the item library ----------
@@ -84,17 +84,20 @@ function filtered(){
     if(u.rar&&i.rarity!==u.rar)return false;
     if(u.att==='req'&&!(i.attune&&i.attune.mode==='required'))return false;
     if(u.att==='no'&&i.attune&&i.attune.mode==='required')return false;
+    if(u.vis==='shown'&&!seenByPlayers(i))return false;
+    if(u.vis==='hidden'&&seenByPlayers(i))return false;
     if(q&&!(i.name+' '+i.type+' '+(i.desc||'')).toLowerCase().includes(q))return false;
     return true}).sort((a,b)=>a.name.localeCompare(b.name));
 }
 function itemsView(){
   const u=S.ui,srcs=SRC(),L=filtered(),sel=u.sel&&byId[u.sel];
-  const lh=L.slice(0,400).map(i=>`<div class="li ${i.id===u.sel?'sel':''}" data-id="${esc(i.id)}"><span>${esc(i.name)}<br><small>${esc(i.type)}</small></span><small>${esc(i.rarity||'')}<br>${esc(i.source)}</small></div>`).join('');
+  const lh=L.slice(0,400).map(i=>`<div class="li ${i.id===u.sel?'sel':''}" data-id="${esc(i.id)}"><span>${esc(i.name)}${seenByPlayers(i)?'':' <small class="locked" title="Players can\'t see this">hidden</small>'}<br><small>${esc(i.type)}</small></span><small>${esc(i.rarity||'')}<br>${esc(i.source)}</small></div>`).join('');
   return `<div class="split"><div><div class="row"><input class="grow" id="q" placeholder="Search name, type, text…" value="${esc(u.q)}">
   <select id="fsrc"><option value="">All sources</option>${[...srcs].map(([k,n])=>`<option value="${esc(k)}" ${u.src===k?'selected':''}>${esc(k)} — ${esc(n)}</option>`)}</select>
   <select id="frar"><option value="">Any rarity</option>${RAR.map(r=>`<option ${u.rar===r?'selected':''}>${r}</option>`)}</select>
-  <select id="fatt"><option value="">Any attunement</option><option value="req" ${u.att==='req'?'selected':''}>Requires attunement</option><option value="no" ${u.att==='no'?'selected':''}>No attunement</option></select></div>
-  <div class="row" style="margin-top:6px"><span class="mu">${L.length} items${L.length>400?' (showing 400 — refine search)':''}</span><label style="margin:0"><input type="checkbox" id="gm" ${u.showGM?'checked':''} style="width:auto"> show GM-only twin entries</label><button class="sm" id="new">+ New item</button></div>
+  <select id="fatt"><option value="">Any attunement</option><option value="req" ${u.att==='req'?'selected':''}>Requires attunement</option><option value="no" ${u.att==='no'?'selected':''}>No attunement</option></select>
+  <select id="fvis"><option value="">Shown and hidden</option><option value="shown" ${u.vis==='shown'?'selected':''}>Shown to players</option><option value="hidden" ${u.vis==='hidden'?'selected':''}>Hidden from players</option></select></div>
+  <div class="row" style="margin-top:6px"><span class="mu">${L.length} items${L.length>400?' (showing 400 — refine search)':''}</span><label style="margin:0"><input type="checkbox" id="gm" ${u.showGM?'checked':''} style="width:auto"> show GM-only twin entries</label><button class="sm" id="new">+ New item</button></div>${catalogNote()}
   <div class="list">${lh||'<div class="li mu">Nothing found</div>'}</div></div>
   <div id="detail">${sel?detail(sel):'<p class="mu">Select an item.</p>'}</div></div>`;
 }
@@ -102,6 +105,7 @@ function detail(i){
   const copies=S.inv.filter(c=>c.itemId===i.id);
   return `<div class="card"><h2>${esc(i.name)}</h2><div class="mu">${esc(rarLine(i))}${i.tier?' · Tier '+i.tier:''}</div>
   <div style="margin:6px 0"><span class="tag">${esc(i.source)}</span>${attLine(i)?`<span class="tag">${esc(attLine(i))}</span>`:'<span class="tag">No attunement</span>'}${i.value?`<span class="tag">${esc(i.value)}</span>`:''}${i.weight?`<span class="tag">${esc(i.weight)}</span>`:''}</div>
+  ${visLine(i)}
   <p class="pre">${esc(i.desc)||'<span class="mu">(no description)</span>'}</p>
   ${needsAtt(i)||i.verdict?`<h3>The Item's Verdict</h3>${verdictHTML(i)}`:''}
   ${fxSection(i)}
@@ -265,6 +269,7 @@ function editForm(i){
 }
 // ---------- render + events ----------
 function render(){
+  if(PLAYER)return playerRender();
   const t=S.ui.tab;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   const app=$('#app');
   app.innerHTML=t==='items'?itemsView():t==='party'?partyView():t==='print'?printView():dataView();
@@ -309,7 +314,7 @@ async function suiteRefresh(token){
   if(linkParty()){save();render()}else publishSoon();
 }
 var sentMi=new Map(),pubT=null;
-function publishSoon(){clearTimeout(pubT);pubT=setTimeout(publishItems,400)}
+function publishSoon(){clearTimeout(pubT);pubT=setTimeout(()=>{publishItems();publishCatalog()},400)}
 async function publishItems(){
   await coreReady;if(!core||!core.cachedParty)return;
   const[V,L]=await Promise.all([core.views&&core.views(),core.live&&core.live()]);if(!V||!L)return;
@@ -320,6 +325,101 @@ async function publishItems(){
     const v=V.miView({state:S},seed,p);if(!v)continue;
     const k=JSON.stringify(v);if(sentMi.get(p.id)===k)continue;
     if(await L.channel(keys.get(p.charId),'mi',{magicItems:v.items,attuneMax:v.limit}))sentMi.set(p.id,k);
+  }
+}
+// ---------- what players can browse: the whole library except what the DM hides (never prices, Verdicts,
+// GM notes or GM-only entries). The DM's device keeps the table's copy on the live link up to date. ----------
+const seenByPlayers=i=>!i.gm&&!S.hidden[i.id];
+function visLine(i){
+  if(i.gm)return '<div class="row"><span class="locked">GM-only entry: players never see this one.</span></div>';
+  const h=!!S.hidden[i.id];
+  return `<div class="row"><span class="${h?'locked':'att'}">${h?'Hidden from players':'Shown to players'}</span><button class="sm" id="vis">${h?'Show to players':'Hide from players'}</button></div>`;
+}
+var libChecked=false,catBusy=false,catAgain=false,catStatus='';
+function catalogNote(){
+  if(!core||!core.tableRole)return '';
+  if(core.tableRole()!=='dm')return '<p class="mu" style="font-size:13px;margin:4px 0 0">Create a table in the launcher and your players can browse these items (never their prices or your notes).</p>';
+  const n=ITEMS.filter(seenByPlayers).length,t=core.currentTable();
+  return `<p class="mu" style="font-size:13px;margin:4px 0 0">Players at ${esc(t?.name||'your table')} can browse ${n} item${n===1?'':'s'}: names, descriptions and attunement, never prices or your notes.${catStatus?` <span class="locked">${esc(catStatus)}</span>`:''}</p>`;
+}
+async function publishCatalog(){
+  await coreReady;if(!core||!core.tableRole||core.tableRole()!=='dm')return;
+  const t=core.currentTable();if(!t||!t.id)return;
+  await libReady;if(Y.connected&&!libChecked)return; // wait until your own library has come from Drive, so players never get the SRD list by mistake
+  if(catBusy){catAgain=true;return}catBusy=true;
+  try{
+    const T=await core.tables();if(!T||!T.updateCatalog)return;
+    const sk='mi-catalog-sent-'+t.id;let sent={n:-1,h:{}};try{sent=JSON.parse(localStorage.getItem(sk))||sent}catch(e){}
+    const patch={},now={};let n=0;
+    for(const i of ITEMS){
+      if(!seenByPlayers(i))continue;
+      const k=T.itemKey(i.id),v={n:i.name,ty:i.type||'',r:i.rarity||'',a:attLine(i),w:i.weight||'',s:i.source||'',d:i.desc||''};
+      const h=hsh(JSON.stringify(v));now[k]=h;n++;if(sent.h[k]!==h)patch['items/'+k]=v;
+    }
+    for(const k in sent.h)if(!(k in now))patch['items/'+k]=null;
+    if(!Object.keys(patch).length&&sent.n===n){if(catStatus){catStatus='';if(S.ui.tab==='items')render()}return}
+    const srcs={};SRC().forEach((nm,k)=>{srcs[T.itemKey(k)]=nm});
+    patch.meta={t:Date.now(),count:n,sources:srcs};
+    await T.updateCatalog(tok&&Date.now()<tokExp-60000?tok:null,t.id,patch);
+    try{localStorage.setItem(sk,JSON.stringify({n,h:now}))}catch(e){}
+    const was=catStatus;catStatus='';if(was&&S.ui.tab==='items')render();
+  }catch(e){console.warn('player catalog',e);catStatus="Couldn't update what players see: "+(e.message||e);if(S.ui.tab==='items')render()}
+  finally{catBusy=false;if(catAgain){catAgain=false;publishCatalog()}}
+}
+// ---------- a player's view: browse the table's items, read-only ----------
+const PLAYER=(()=>{try{return JSON.parse(localStorage.getItem('dmp-suite-table')||'null')?.role==='player'}catch(e){return false}})();
+var P={items:[],src:{},q:'',rar:'',att:'',sel:null,table:null,note:''};
+function usePlayerCatalog(cat){
+  P.items=Object.entries(cat.items||{}).map(([k,i])=>Object.assign({k},i)).sort((a,b)=>String(a.n).localeCompare(String(b.n)));
+  P.src=(cat.meta&&cat.meta.sources)||{};playerRender();
+}
+function playerSay(html){$('#app').innerHTML=`<div class="card" style="max-width:560px;margin:20px auto"><p>${html}</p><p><a href="/" style="color:inherit">Open the launcher</a></p></div>`}
+function playerDetail(i){
+  const src=P.src[encodeURIComponent(i.s).replace(/\./g,'%2E')]||i.s;
+  return `<div class="card"><h2>${esc(i.n)}</h2><div class="mu">${esc([i.ty,i.r].filter(Boolean).join(', '))}</div>
+  <div style="margin:6px 0">${i.s?`<span class="tag" title="${esc(src)}">${esc(i.s)}</span>`:''}<span class="tag">${esc(i.a||'No attunement')}</span>${i.w?`<span class="tag">${esc(i.w)}</span>`:''}</div>
+  <p class="pre">${esc(i.d)||'<span class="mu">(no description)</span>'}</p></div>`;
+}
+function playerRender(){
+  const q=P.q.trim().toLowerCase();
+  const L=P.items.filter(i=>{
+    if(P.rar&&i.r!==P.rar)return false;
+    const req=/^Requires/.test(i.a||'');
+    if(P.att==='req'&&!req)return false;if(P.att==='no'&&req)return false;
+    if(q&&!((i.n||'')+' '+(i.ty||'')+' '+(i.d||'')).toLowerCase().includes(q))return false;
+    return true});
+  const sel=P.items.find(i=>i.k===P.sel);
+  $('#app').innerHTML=`<div class="split"><div><div class="row"><input class="grow" id="q" placeholder="Search name, type, text…" value="${esc(P.q)}">
+  <select id="frar"><option value="">Any rarity</option>${RAR.map(r=>`<option ${P.rar===r?'selected':''}>${r}</option>`)}</select>
+  <select id="fatt"><option value="">Any attunement</option><option value="req" ${P.att==='req'?'selected':''}>Requires attunement</option><option value="no" ${P.att==='no'?'selected':''}>No attunement</option></select></div>
+  <div class="row" style="margin-top:6px"><span class="mu">${L.length} item${L.length===1?'':'s'}${L.length>400?' (showing 400; refine the search)':''}</span>${P.note?`<span class="mu" style="font-size:13px">${esc(P.note)}</span>`:''}</div>
+  <div class="list">${L.slice(0,400).map(i=>`<div class="li ${i.k===P.sel?'sel':''}" data-k="${esc(i.k)}"><span>${esc(i.n)}<br><small>${esc(i.ty)}</small></span><small>${esc(i.r||'')}</small></div>`).join('')||'<div class="li mu">Nothing found</div>'}</div></div>
+  <div id="detail">${sel?playerDetail(sel):'<p class="mu">Pick an item to read about it.</p>'}</div></div>`;
+  let tm;$('#q').oninput=e=>{P.q=e.target.value;clearTimeout(tm);tm=setTimeout(()=>{const p=e.target.selectionStart;playerRender();const el=$('#q');el.focus();el.setSelectionRange(p,p)},200)};
+  $('#frar').onchange=e=>{P.rar=e.target.value;playerRender()};$('#fatt').onchange=e=>{P.att=e.target.value;playerRender()};
+  document.querySelectorAll('.li[data-k]').forEach(el=>el.onclick=()=>{
+    P.sel=el.dataset.k;const i=P.items.find(x=>x.k===P.sel);
+    // on a phone the list fills the screen, so the item opens on top of it
+    if(window.innerWidth<=800&&i){modal(playerDetail(i)+'<div class="row" style="margin-top:8px"><button class="pri" id="cl">Close</button></div>',m=>{$('#cl',m).onclick=closeModal});return}
+    const sc=$('.list').scrollTop;playerRender();$('.list').scrollTop=sc});
+}
+async function playerMain(){
+  $('#tabs').style.display='none';
+  let t=null;try{t=JSON.parse(localStorage.getItem('dmp-suite-table')||'null')}catch(e){}
+  P.table=t;$('#syncpill').textContent=t&&t.name?t.name:'';
+  if(t.status&&t.status!=='approved')return playerSay(`Your DM hasn't let you into ${esc(t.name||'the table')} yet. Once they do, the table's magic items show up here.`);
+  const cached=await idbGet('catalog-'+t.id);
+  if(cached)usePlayerCatalog(cached);else playerSay('Loading the table\'s magic items…');
+  try{
+    await coreReady;if(!core||!core.tables)throw new Error("Couldn't load the suite.");
+    const T=await core.tables();if(!T||!T.catalog)throw new Error("Couldn't load the table.");
+    let pass=core.signedIn('');if(!pass&&core.refreshNow)pass=await core.refreshNow();
+    const cat=await T.catalog(pass?pass.value:null,t.id);
+    if(cat&&cat.items){await idbPut('catalog-'+t.id,cat);P.note='';usePlayerCatalog(cat)}
+    else if(!cached)playerSay("Your DM hasn't shared any magic items yet.");
+  }catch(e){
+    if(cached){P.note='Showing the copy saved on this device.';playerRender()}
+    else playerSay(`Couldn't load the table's magic items. ${esc(e.message||e)}<br>Open the launcher, make sure you're signed in, then come back.`);
   }
 }
 // ---------- Google Drive sync (hidden app-data file, same idea as the other apps) ----------
@@ -361,7 +461,7 @@ async function push(id,stamp){
   const r=await gapi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body:`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({name:FILE,parents:['appDataFolder']})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`});
   return (await r.json()).id;
 }
-function applyRemote(rem){const ui=S.ui;S=Object.assign(defaults(),rem.state,{ui});buildItems();save();}
+function applyRemote(rem){const ui=S.ui;S=Object.assign(defaults(),rem.state,{hidden:rem.state.hidden||{},ui});buildItems();save();}
 // Your item library in your Drive: download it when it changed, or (the first time, on the device that still has
 // the full list) put it there
 async function syncLibrary(){
@@ -394,7 +494,7 @@ async function doSync(silent){
   if(busy||!Y.clientId)return;busy=true;
   try{
     setMsg('syncing…');await getToken(!silent);suiteRefresh(tok);
-    await syncLibrary().catch(e=>console.warn('item library',e));
+    await syncLibrary().then(()=>{libChecked=true;publishCatalog()},e=>console.warn('item library',e));
     const id=await findRemote();let lc=changed();
     const pristine=!S.inv.length&&!S.custom.length&&!Object.keys(S.edits).length&&!S.printQ.length&&S.pcs.every(p=>/^Player \d$/.test(p.name)&&p.limit===3);
     if(!Y.remoteStamp&&pristine)lc=false;
@@ -420,7 +520,7 @@ function bind(){
   const t=S.ui.tab;
   if(t==='items'){
     let tm;$('#q').oninput=e=>{S.ui.q=e.target.value;clearTimeout(tm);tm=setTimeout(()=>{const p=e.target.selectionStart;render();const q=$('#q');q.focus();q.setSelectionRange(p,p)},200)};
-    $('#fsrc').onchange=e=>{S.ui.src=e.target.value;render()};$('#frar').onchange=e=>{S.ui.rar=e.target.value;render()};$('#fatt').onchange=e=>{S.ui.att=e.target.value;render()};
+    $('#fsrc').onchange=e=>{S.ui.src=e.target.value;render()};$('#frar').onchange=e=>{S.ui.rar=e.target.value;render()};$('#fatt').onchange=e=>{S.ui.att=e.target.value;render()};$('#fvis').onchange=e=>{S.ui.vis=e.target.value;render()};
     $('#gm').onchange=e=>{S.ui.showGM=e.target.checked;render()};
     $('#new').onclick=()=>editForm(null);
     on('.li[data-id]','click',e=>{S.ui.sel=e.currentTarget.dataset.id;save();render()});
@@ -431,8 +531,9 @@ function bind(){
       const fe=$('#fxedit');if(fe)fe.onclick=()=>fxEditor(sel);
       const fr=$('#fxreset');if(fr)fr.onclick=()=>setItemFx(sel,null);
       $('#toq').onclick=()=>{const q=S.printQ,k=q.indexOf(sel.id);k<0?q.push(sel.id):q.splice(k,1);save();render()};
-      const d=$('#del');if(d)d.onclick=()=>{if(confirm('Delete this custom item and its copies?')){S.custom=S.custom.filter(c=>c.id!==sel.id);S.inv=S.inv.filter(c=>c.itemId!==sel.id);S.printQ=S.printQ.filter(x=>x!==sel.id);S.ui.sel=null;save();buildItems();render()}};
+      const d=$('#del');if(d)d.onclick=()=>{if(confirm('Delete this custom item and its copies?')){S.custom=S.custom.filter(c=>c.id!==sel.id);S.inv=S.inv.filter(c=>c.itemId!==sel.id);S.printQ=S.printQ.filter(x=>x!==sel.id);delete S.hidden[sel.id];S.ui.sel=null;save();buildItems();render()}};
       const r=$('#revert');if(r)r.onclick=()=>{delete S.edits[sel.id];save();buildItems();render()};
+      const hv=$('#vis');if(hv)hv.onclick=()=>{if(S.hidden[sel.id])delete S.hidden[sel.id];else S.hidden[sel.id]=true;save();render()};
     }
   }
   if(t==='party'){
@@ -474,5 +575,5 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{S.ui.tab=b.d
 window.addEventListener('resize',()=>{if(S.ui.tab==='print')buildPages()});
 window.addEventListener('beforeprint',()=>{if(S.ui.tab!=='print'){}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
-render();
-if(Y.connected){setMsg(changed()?'● unsynced changes':'');doSync(true)}
+if(PLAYER)playerMain();
+else{render();if(Y.connected){setMsg(changed()?'● unsynced changes':'');doSync(true)}else publishSoon()}
