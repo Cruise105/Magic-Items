@@ -608,4 +608,8 @@ window.addEventListener('resize',()=>{if(S.ui.tab==='print')buildPages()});
 window.addEventListener('beforeprint',()=>{if(S.ui.tab!=='print'){}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(PLAYER)playerMain();
-else{render();if(Y.connected){setMsg(changed()?'● unsynced changes':'');doSync(true)}else publishSoon()}
+else{render();if(Y.connected){setMsg(changed()?'● unsynced changes':'');doSync(true)}else autoConnect().then(ok=>{if(!ok)publishSoon()})}
+// Signed in through the launcher already? Connect Drive here on its own, so nobody has to hunt for the button.
+async function autoConnect(){try{await coreReady;if(!core)return false;if(!Y.clientId)Y.clientId=DEFAULT_CID;if(Y.clientId!==core.CLIENT_ID)return false;
+  let sh=core.signedIn(SCOPE,{app:'magic-items'});if(!sh&&core.refreshNow){await core.refreshNow();sh=core.signedIn(SCOPE,{app:'magic-items'})}
+  if(!sh)return false;Y.connected=true;saveY();render();await doSync(true);return true}catch(_){return false}}
