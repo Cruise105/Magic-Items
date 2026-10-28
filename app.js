@@ -15,6 +15,12 @@ S=load();
 // lives in a private file in their own Google Drive and is kept on the device for offline use; when it's there,
 // it replaces the SRD list. Nothing about it is in the public code.
 var PUBLIC_SEED=window.SEED,LIB_FILE='omnithel-items-library.json',LIB={items:0,stamp:0,from:''};
+// The 2024 rules' SRD items (SRD 5.2) are always there too; the Items list shows the table's edition (set in the
+// launcher's Table Rules). Items someone already holds always show, whichever edition they're from.
+var SRD24=window.SEED24||{items:[],sources:[]};
+const edition=()=>(core&&core.tableSettings&&core.tableSettings().edition==='2024'?'2024':'2014');
+const otherEd=i=>edition()==='2024'?/^srd:/.test(i.id):/^srd24:/.test(i.id);
+const baseItems=()=>{const have=new Set(SEED.items.map(i=>i.id));return SEED.items.concat(SRD24.items.filter(i=>!have.has(i.id)))};
 var idbOpen=()=>new Promise((res,rej)=>{const r=indexedDB.open('omnithel-items-lib',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
 var idbGet=k=>idbOpen().then(db=>new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})).catch(()=>null);
 var idbPut=(k,v)=>idbOpen().then(db=>new Promise(res=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res(true);t.onerror=()=>res(false)})).catch(()=>false);
@@ -29,11 +35,11 @@ var libReady=idbGet('library').then(l=>useLibrary(l,'device'));
 // ---------- items ----------
 let ITEMS=[];const byId={};
 function buildItems(){
-  ITEMS=SEED.items.map(i=>S.edits[i.id]?Object.assign({},i,S.edits[i.id]):i).concat(S.custom.map(c=>S.edits[c.id]?Object.assign({},c,S.edits[c.id]):c));
+  ITEMS=baseItems().map(i=>S.edits[i.id]?Object.assign({},i,S.edits[i.id]):i).concat(S.custom.map(c=>S.edits[c.id]?Object.assign({},c,S.edits[c.id]):c));
   ITEMS.forEach(i=>byId[i.id]=i);
 }
 buildItems();
-const SRC=()=>{const m=new Map();SEED.sources.forEach(s=>m.set(s.key,s.name||s.key));ITEMS.forEach(i=>{if(!m.has(i.source))m.set(i.source,i.source)});return m};
+const SRC=()=>{const m=new Map();SEED.sources.concat(SRD24.sources||[]).forEach(s=>m.set(s.key,s.name||s.key));ITEMS.forEach(i=>{if(!m.has(i.source))m.set(i.source,i.source)});return m};
 const needsAtt=i=>i.attune&&(i.attune.mode==='required'||i.attune.mode==='optional'||i.attune.mode==='unknown'&&i.verdict);
 function attLine(i){const a=i.attune||{};if(a.mode==='required')return 'Requires attunement'+(a.by?' by '+a.by.replace(/^(a|an)\s+/i,m=>m):'');if(a.mode==='optional')return 'Attunement optional';return ''}
 function rarLine(i){return [i.type,i.rarity].filter(Boolean).join(', ')}
@@ -102,6 +108,7 @@ function filtered(){
   const u=S.ui,q=u.q.trim().toLowerCase();
   return ITEMS.filter(i=>{
     if(i.gm&&!u.showGM)return false;
+    if(otherEd(i)&&!S.inv.some(c=>c.itemId===i.id))return false;
     if(u.src&&i.source!==u.src)return false;
     if(u.rar&&i.rarity!==u.rar)return false;
     if(u.att==='req'&&!(i.attune&&i.attune.mode==='required'))return false;
@@ -342,7 +349,7 @@ async function publishItems(){
   await coreReady;if(!core||!core.cachedParty)return;
   const[V,L]=await Promise.all([core.views&&core.views(),core.live&&core.live()]);if(!V||!L)return;
   const keys=new Map(core.cachedParty().filter(c=>c.liveKey).map(c=>[c.id,c.liveKey]));
-  const seed=new Map(SEED.items.map(i=>[i.id,i]));
+  const seed=new Map(baseItems().map(i=>[i.id,i]));
   for(const p of S.pcs){
     if(!p.charId||!keys.has(p.charId))continue;
     const v=V.miView({state:S},seed,p);if(!v)continue;
@@ -362,7 +369,7 @@ var libChecked=false,catBusy=false,catAgain=false,catStatus='';
 function catalogNote(){
   if(!core||!core.tableRole)return '';
   if(core.tableRole()!=='dm')return '<p class="mu" style="font-size:13px;margin:4px 0 0">Create a table in the launcher and your players can browse these items (never their prices or your notes).</p>';
-  const n=ITEMS.filter(seenByPlayers).length,t=core.currentTable();
+  const n=ITEMS.filter(i=>seenByPlayers(i)&&!otherEd(i)).length,t=core.currentTable();
   return `<p class="mu" style="font-size:13px;margin:4px 0 0">Players at ${esc(t?.name||'your table')} can browse ${n} item${n===1?'':'s'}: names, descriptions and attunement, never prices or your notes.${catStatus?` <span class="locked">${esc(catStatus)}</span>`:''}</p>`;
 }
 async function publishCatalog(){
@@ -375,7 +382,7 @@ async function publishCatalog(){
     const sk='mi-catalog-sent-'+t.id;let sent={n:-1,h:{}};try{sent=JSON.parse(localStorage.getItem(sk))||sent}catch(e){}
     const patch={},now={};let n=0;
     for(const i of ITEMS){
-      if(!seenByPlayers(i))continue;
+      if(!seenByPlayers(i)||otherEd(i))continue;
       const k=T.itemKey(i.id),v={n:i.name,ty:i.type||'',r:i.rarity||'',a:attLine(i),w:i.weight||'',s:i.source||'',d:i.desc||''};
       const h=hsh(JSON.stringify(v));now[k]=h;n++;if(sent.h[k]!==h)patch['items/'+k]=v;
     }
@@ -455,7 +462,8 @@ const hsh=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))
 const payload=()=>{const{ui,...rest}=S;return JSON.stringify(rest)};
 let tok=null,tokExp=0,syncMsg='',pushT=null,busy=false;
 // Suite core: one shared Google sign-in for every app on this site. If it can't load, this app signs in on its own as before.
-var core=null;var coreReady=import('/core/suite.js').then(m=>{core=m}).catch(()=>{});
+var core=null;var coreReady=import('/core/suite.js').then(m=>{core=m;if(!PLAYER&&S.ui.tab==='items')render()}).catch(()=>{});
+window.addEventListener('dmp-suite',()=>{if(!PLAYER&&S.ui.tab==='items')render()});
 const setMsg=m=>{syncMsg=m;const e=$('#syncpill');if(e)e.textContent=m;const d=$('#syncdet');if(d)d.textContent=m};
 const changed=()=>hsh(payload())!==Y.lastHash;
 function syncNote(){if(!Y.connected)return;if(changed()){setMsg('● unsynced changes');clearTimeout(pushT);pushT=setTimeout(()=>{if(tok&&Date.now()<tokExp-60000)doSync(true)},4000)}}

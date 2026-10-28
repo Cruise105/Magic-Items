@@ -1,5 +1,5 @@
-const C="verdict-v18";
-const F=['./','index.html','app.js','style.css','data.js','manifest.json','icon.svg'];
+const C="verdict-v19";
+const F=['./','index.html','app.js','style.css','data.js','data2024.js','manifest.json','icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(F).then(()=>c.add('/core/suite.js').catch(()=>{}))));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x.startsWith("verdict-")&&x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return;e.respondWith(fetch(e.request,new URL(e.request.url).pathname.startsWith('/core/')?{cache:'no-cache'}:{}).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp));return r}).catch(()=>caches.match(e.request)))});
